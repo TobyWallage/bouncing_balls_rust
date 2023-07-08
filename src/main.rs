@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
+use bevy::time::Stopwatch;
 use bevy::utils::HashMap;
 use bevy::window::PrimaryWindow;
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
@@ -7,21 +8,30 @@ use rand::Rng;
 
 pub const SPEED: f32 = 400.0;
 pub const GRAVITY: Vec3 = Vec3::new(0.0, -600.0, 0.0);
-pub const DAMPENING: f32 = 0.93;
-pub const FIXED_TIME: f32 = 1.0/140.0;
+pub const DAMPENING: f32 = 0.998;
+pub const FIXED_TIME: f32 = 1.0/600.0;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .insert_resource(ClearColor(Color::rgb(0.5, 0.5, 0.9)))
         .add_plugin(LogDiagnosticsPlugin::default())
         .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_startup_system(spawn_camera)
-        .add_startup_system(spawn_ball)
+        .add_startup_system(spawn_rate_limiter)
+        // .add_startup_system(spawn_ball)
+        .add_systems(
+            (
+                ball_movement,
+                ball_check_border,
+                check_ball_collision,
+            )
+            .in_schedule(CoreSchedule::FixedUpdate)
+        )
+        .insert_resource(FixedTime::new_from_secs(FIXED_TIME))
         .add_system(spawn_ball)
-        .add_system(ball_movement)
-        .add_system(ball_check_border)
         .add_system(print_fps)
-        .add_system(check_ball_collision)
+        .add_system(change_ball_color)
         .run();
 }
 
@@ -31,26 +41,43 @@ pub struct Ball {
     pub velocity: Vec3,
 }
 
+#[derive(Component)]
+pub struct SpawnRateLimiter{
+    pub time:Stopwatch
+}
+
+pub fn spawn_rate_limiter(mut commands: Commands){
+    commands.spawn(SpawnRateLimiter{time: Stopwatch::new()});
+}
+
 pub fn spawn_ball(
     mut commands: Commands,
     mouse_input: Res<Input<MouseButton>>,
     window_query: Query<&Window, With<PrimaryWindow>>,
+    time: Res<Time>,
+    mut spawn_rate_q: Query<&mut SpawnRateLimiter>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     let window = window_query.get_single().unwrap();
+    let mut spawn_rate_limiter = spawn_rate_q.get_single_mut().unwrap();
+    if spawn_rate_limiter.time.tick(time.delta()).elapsed_secs() < 0.2{
+        return;
+    }
 
     if let Some(mouse_position) = window.cursor_position() {
-        if mouse_input.just_released(MouseButton::Left) {
+        if mouse_input.just_released(MouseButton::Left)  || mouse_input.pressed(MouseButton::Right){
             println!(
                 "Cursor clicked inside the primary window, at {:?}",
                 mouse_position
             );
 
+            spawn_rate_limiter.time.reset();
+
             let rand_radius: f32 = rand::thread_rng().gen_range(5.0..=20.0);
             let rand_velcoity: Vec3 = Vec3::new(
-                rand::thread_rng().gen_range(-20.0..=200.0),
-                rand::thread_rng().gen_range(-20.0..=200.0),
+                rand::thread_rng().gen_range(-40.0..=40.0),
+                rand::thread_rng().gen_range(-40.0..=40.0),
                 0.0,
             );
 
@@ -78,11 +105,10 @@ pub fn spawn_camera(mut commands: Commands, window_query: Query<&Window, With<Pr
     });
 }
 
-pub fn ball_movement(mut ball_query: Query<(&mut Transform, &mut Ball)>, time: Res<Time>) {
-    let delta_time = time.delta_seconds();
+pub fn ball_movement(mut ball_query: Query<(&mut Transform, &mut Ball)>) {
     for (mut transform, mut ball) in ball_query.iter_mut() {
         let current_velocity = Vec3::new(ball.velocity.x, ball.velocity.y, 0.0);
-        transform.translation += current_velocity * FIXED_TIME;
+        transform.translation += current_velocity * FIXED_TIME + (0.5 * GRAVITY*FIXED_TIME*FIXED_TIME);
         ball.velocity += GRAVITY * FIXED_TIME;
     }
 }
@@ -171,4 +197,16 @@ pub fn check_ball_collision(mut ball_query: Query<(Entity, &mut Transform, &mut 
         transform.translation += *translation_map.get(&entity).unwrap();
     }
 
+}
+
+pub fn change_ball_color( ball_material_query: Query<(&Ball, &Handle<ColorMaterial>)>, mut materials: ResMut<Assets<ColorMaterial>>){
+    for (ball, color_handle) in ball_material_query.iter(){
+        let color = &mut materials.get_mut(color_handle).unwrap().color;
+        let new_color = Color::hsla((ball.velocity.length()/9.0) % 360.0, 0.9,0.6,1.0);
+        color.set_r(new_color.r());
+        color.set_g(new_color.g());
+        color.set_b(new_color.b());
+        color.set_a(new_color.a());
+
+    }
 }
