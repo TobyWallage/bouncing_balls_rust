@@ -8,3 +8,7 @@ edition = "2021"
 [dependencies]
 bevy = "0.10"
 rand = "0.8.5"
+
+[profile.release]
+lto = 'thin'
+opt-level = 's'
