@@ -19,7 +19,7 @@ fn main() {
                 fit_canvas_to_parent: true,
                 canvas: Some("#bevy".to_string()),
                 prevent_default_event_handling: false,
-                resizable: false,
+                resizable: true,
                 ..default()
             }),
             ..default()
@@ -149,7 +149,7 @@ pub fn move_camera(mut camera_query: Query<&mut Transform, With<Camera2d>>,windo
     
     let mut camera_transform = camera_query.get_single_mut().unwrap();
 
-    camera_transform.translation = Vec3::new((window.physical_width() as f32)/2.0, (window.physical_height() as f32)/2.0, 0.0)
+    camera_transform.translation = Vec3::new((window.width() as f32)/2.0, (window.height() as f32)/2.0, 0.0)
 }
 
 pub fn ball_movement(mut ball_query: Query<(&mut Transform, &mut Ball)>) {
