@@ -8,19 +8,27 @@ use bevy::window::PrimaryWindow;
 use rand::Rng;
 
 pub const SPEED: f32 = 400.0;
-pub const GRAVITY: Vec3 = Vec3::new(0.0, -600.0, 0.0);
+pub const GRAVITY: Vec3 = Vec3::new(0.0, -800.0, 0.0);
 pub const DAMPENING: f32 = 0.998;
 pub const FIXED_TIME: f32 = 1.0 / 600.0;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                fit_canvas_to_parent: true,
+                canvas: Some("#bevy".to_string()),
+                prevent_default_event_handling: false,
+                resizable: false,
+                ..default()
+            }),
+            ..default()
+        }))
         .insert_resource(ClearColor(Color::rgb(0.5, 0.5, 0.9)))
         .add_plugin(LogDiagnosticsPlugin::default())
-        .add_plugin(FrameTimeDiagnosticsPlugin::default())
+        // .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_startup_system(spawn_camera)
         .add_startup_system(spawn_rate_limiter)
-        // .add_startup_system(spawn_ball)
         .add_systems(
             (ball_movement, ball_check_border, check_ball_collision)
                 .in_schedule(CoreSchedule::FixedUpdate),
@@ -29,6 +37,7 @@ fn main() {
         .add_system(spawn_ball)
         .add_system(print_fps)
         .add_system(change_ball_color)
+        .add_system(move_camera)
         .run();
 }
 
@@ -83,11 +92,16 @@ pub fn spawn_ball(
     }
     // touch input logic
 
-    for touch in touch_input.iter(){
+    for touch in touch_input.iter() {
         info!("Touch {:?}", touch);
-        spawn_ball_function(&touch.position(), &mut commands, &mut spawn_rate_limiter, &mut meshes, &mut materials)
+        spawn_ball_function(
+            &touch.position(),
+            &mut commands,
+            &mut spawn_rate_limiter,
+            &mut meshes,
+            &mut materials,
+        )
     }
-
 }
 
 fn spawn_ball_function(
@@ -124,9 +138,18 @@ fn spawn_ball_function(
 pub fn spawn_camera(mut commands: Commands, window_query: Query<&Window, With<PrimaryWindow>>) {
     let window = window_query.get_single().unwrap();
     commands.spawn(Camera2dBundle {
-        transform: Transform::from_xyz(window.width() / 2., window.height() / 2., 0.0),
+        transform: Transform::from_xyz(window.width()/2.0, window.height()/2.0, 0.0),
         ..default()
     });
+    info!("Window info {:?}", window)
+}
+
+pub fn move_camera(mut camera_query: Query<&mut Transform, With<Camera2d>>,window_query: Query<&Window, With<PrimaryWindow>>){
+    let window = window_query.get_single().unwrap();
+    
+    let mut camera_transform = camera_query.get_single_mut().unwrap();
+
+    camera_transform.translation = Vec3::new((window.physical_width() as f32)/2.0, (window.physical_height() as f32)/2.0, 0.0)
 }
 
 pub fn ball_movement(mut ball_query: Query<(&mut Transform, &mut Ball)>) {
@@ -170,9 +193,14 @@ pub fn ball_check_border(
     }
 }
 
-pub fn print_fps(time: Res<Time>, key_input: Res<Input<KeyCode>>) {
+pub fn print_fps(time: Res<Time>, key_input: Res<Input<KeyCode>>, window_query: Query<&Window, With<PrimaryWindow>>) {
+    if key_input.pressed(KeyCode::Backslash) {
+        info!("Approx fps = {}", 1.0 / (time.delta_seconds()));
+    }
+
     if key_input.pressed(KeyCode::Grave) {
-        println!("Approx fps = {}", 1.0 / (time.delta_seconds()));
+        let window = window_query.get_single().unwrap();
+        info!("Window info : {:?}", window)
     }
 }
 
